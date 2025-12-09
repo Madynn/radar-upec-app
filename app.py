@@ -56,7 +56,7 @@ if 'page' not in st.session_state: st.session_state.page = "login"
 if 'etage_choisi' not in st.session_state: st.session_state.etage_choisi = None
 if 'expanded_grp' not in st.session_state: st.session_state.expanded_grp = None
 
-# --- CSS (V41 - FINAL) ---
+# --- CSS (V42 - CORRECTIF DARK MODE) ---
 def inject_custom_css(page_type="standard"):
     base_css = """
 <style>
@@ -79,7 +79,7 @@ def inject_custom_css(page_type="standard"):
         background-color: #f0f2f6 !important;
         border-radius: 8px !important;
         border: 1px solid #e0e0e0 !important;
-        color: #444 !important;
+        color: #444 !important; /* Force texte sombre pour les titres accordéon */
         font-weight: 600 !important;
         font-size: 16px !important;
         padding: 15px !important;
@@ -96,12 +96,23 @@ def inject_custom_css(page_type="standard"):
     .stButton button[kind="primary"] { border-color: #8B0000 !important; color: #8B0000 !important; }
     .block-container { padding-top: 1rem; padding-bottom: 5rem; }
     
-    .recap-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9; margin-bottom: 15px; }
-    .ticket-card { border: 2px dashed #ccc; padding: 20px; background-color: #fff; border-radius: 10px; text-align: center; }
-    .confirmed-resa { border-left: 5px solid #28a745; padding-left: 10px; }
-    .pending-resa { border-left: 5px solid #ffc107; padding-left: 10px; }
-    
-    /* Planning Card */
+    /* FIX DARK MODE : On force la couleur noire pour le texte dans les boites blanches */
+    .recap-box { 
+        border: 1px solid #ddd; 
+        padding: 15px; 
+        border-radius: 8px; 
+        background-color: #f9f9f9; 
+        margin-bottom: 15px; 
+        color: #333 !important; /* NOIR FORCÉ */
+    }
+    .ticket-card { 
+        border: 2px dashed #ccc; 
+        padding: 20px; 
+        background-color: #fff; 
+        border-radius: 10px; 
+        text-align: center; 
+        color: #333 !important; /* NOIR FORCÉ */
+    }
     .cours-card {
         background-color: white;
         border-left: 5px solid #ff2b4a;
@@ -109,7 +120,11 @@ def inject_custom_css(page_type="standard"):
         margin-bottom: 10px;
         border-radius: 5px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        color: #333 !important; /* NOIR FORCÉ */
     }
+    
+    .confirmed-resa { border-left: 5px solid #28a745; padding-left: 10px; }
+    .pending-resa { border-left: 5px solid #ffc107; padding-left: 10px; }
 </style>
 """
     if page_type == "accueil":
@@ -125,10 +140,11 @@ def inject_custom_css(page_type="standard"):
         background-color: white;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         transition: 0.1s;
+        color: #333 !important; /* Texte bouton noir */
     }
     div.stButton > button:hover {
         border-color: #ff2b4a;
-        color: #ff2b4a;
+        color: #ff2b4a !important;
         transform: scale(1.02);
     }
     div[data-testid="stHorizontalBlock"] button { height: 50px !important; font-size: 16px !important; }
@@ -149,10 +165,11 @@ def inject_custom_css(page_type="standard"):
         background-color: white;
         transition: 0.1s;
         font-size: 16px !important;
+        color: #333 !important; /* Texte bouton noir */
     }
     div.stButton > button:hover {
         border-color: #ff2b4a;
-        color: #ff2b4a;
+        color: #ff2b4a !important;
     }
 </style>
 """
@@ -197,7 +214,7 @@ def save_ade_url(email, url):
     conn.commit()
     conn.close()
 
-# --- PARSING MULTI-LIENS (V41) ---
+# --- PARSING MULTI-LIENS ---
 def fetch_and_parse_ical(url):
     events = []
     try:
@@ -225,18 +242,12 @@ def fetch_and_parse_ical(url):
     return events
 
 def get_mon_planning(raw_urls):
-    """Gère plusieurs liens séparés par des retours à la ligne"""
     if not raw_urls: return []
-    
     all_events = []
-    # On sépare par ligne et on nettoie
     urls = [u.strip() for u in raw_urls.split('\n') if u.strip().startswith("http")]
-    
     for url in urls:
         events = fetch_and_parse_ical(url)
         all_events.extend(events)
-    
-    # Tri chronologique global
     all_events.sort(key=lambda x: x['debut'])
     return all_events
 
@@ -678,7 +689,6 @@ def vue_profil():
     st.title("👤 Mon Profil")
     st.write("Collez vos liens iCal (ADE) ici. Un lien par ligne.")
     current_url = st.session_state.ade_url
-    # V41 : Text Area pour multi-liens
     new_url = st.text_area("Liens ADE (iCal)", value=current_url, height=150, placeholder="https://ade.u-pec.fr/...\nhttps://ade.u-pec.fr/...")
     if st.button("Enregistrer"):
         save_ade_url(st.session_state.email, new_url)
@@ -995,7 +1005,8 @@ def vue_detail_etage():
                                 st.rerun()
                         elif d['c'] == 'orange_moi':
                             if st.button(f"🟠 {d['m']}{icons_str}", key=d['s'], use_container_width=True, disabled=not reservation_possible):
-                                stat, msg = manage_group_action(st.session_state.email, d['s'], date_choisie, time_choisi, "leave")
+                                action = "cancel" if "Annuler" in d['m'] else "leave"
+                                stat, msg = manage_group_action(st.session_state.email, d['s'], date_choisie, time_choisi, action)
                                 st.session_state.expanded_grp = nom_grp
                                 if msg: st.toast(msg)
                                 st.rerun()
