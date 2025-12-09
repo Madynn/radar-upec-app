@@ -19,37 +19,30 @@ CHECKIN_TIME_MIN = 15
 
 st.set_page_config(page_title="Radar UPEC", page_icon="🏢", layout="wide")
 
-# --- INITIALISATION DB (AVEC SÉCURITÉ ANTI-LOCK) ---
+# --- INITIALISATION DB ---
 def init_db():
-    # On tente de se connecter. Si locké, on attend un peu.
-    for i in range(5):
-        try:
-            conn = sqlite3.connect(DB_FILE, timeout=10) # Timeout plus long
-            c = conn.cursor()
-            c.execute('''CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, password TEXT, nom TEXT, ade_url TEXT DEFAULT "")''')
-            c.execute('''CREATE TABLE IF NOT EXISTS reservations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                user_email TEXT, 
-                salle TEXT, 
-                date_str TEXT, 
-                start_time TEXT, 
-                end_time TEXT, 
-                participants TEXT DEFAULT "", 
-                confirmed_list TEXT DEFAULT ""
-            )''')
-            c.execute('''CREATE TABLE IF NOT EXISTS admin_locks (salle TEXT PRIMARY KEY, reason TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS restrictions (salle TEXT, date_str TEXT, hour INTEGER, type TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS room_equipment (salle TEXT, icon TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS cache_ade (salle TEXT, debut TEXT, fin TEXT)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)''')
-            c.execute("INSERT OR IGNORE INTO metadata (key, value) VALUES ('force_groupe', '0')")
-            conn.commit()
-            conn.close()
-            break # Succès
-        except sqlite3.OperationalError:
-            time.sleep(1) # On attend 1s si bloqué
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, password TEXT, nom TEXT, ade_url TEXT DEFAULT "")''')
+    c.execute('''CREATE TABLE IF NOT EXISTS reservations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        user_email TEXT, 
+        salle TEXT, 
+        date_str TEXT, 
+        start_time TEXT, 
+        end_time TEXT, 
+        participants TEXT DEFAULT "", 
+        confirmed_list TEXT DEFAULT ""
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS admin_locks (salle TEXT PRIMARY KEY, reason TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS restrictions (salle TEXT, date_str TEXT, hour INTEGER, type TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS room_equipment (salle TEXT, icon TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS cache_ade (salle TEXT, debut TEXT, fin TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)''')
+    c.execute("INSERT OR IGNORE INTO metadata (key, value) VALUES ('force_groupe', '0')")
+    conn.commit()
+    conn.close()
 
-# EXÉCUTION IMMÉDIATE
 init_db()
 
 # --- INITIALISATION SESSION ---
@@ -63,96 +56,130 @@ if 'page' not in st.session_state: st.session_state.page = "login"
 if 'etage_choisi' not in st.session_state: st.session_state.etage_choisi = None
 if 'expanded_grp' not in st.session_state: st.session_state.expanded_grp = None
 
-# --- CSS (V42 - DARK MODE COMPATIBLE) ---
+# --- CSS (V44 - MOBILE & DARK MODE FIX) ---
 def inject_custom_css(page_type="standard"):
     base_css = """
 <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* 1. FORCE LE TEXTE NOIR PARTOUT SUR FOND BLANC */
+    html, body, [class*="css"] {
+        font-family: sans-serif;
+    }
+    
+    /* Boutons : Fond Blanc, Texte Noir, Bordure Grise */
+    div.stButton > button {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border: 1px solid #cccccc !important;
+    }
+    div.stButton > button p {
+        color: #000000 !important;
+    }
+    div.stButton > button:hover {
+        border-color: #ff2b4a !important;
+        color: #ff2b4a !important;
+    }
+    div.stButton > button:hover p {
+        color: #ff2b4a !important;
+    }
+
+    /* Exceptions Boutons Spéciaux (Validations, etc.) */
+    button[kind="primary"] {
+        background-color: #ff2b4a !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    button[kind="primary"] p {
+        color: #ffffff !important;
+    }
+
+    /* 2. CLASSES SPÉCIFIQUES */
     .red-card {
         background-color: #ff2b4a;
-        color: white;
+        color: white !important;
         border-radius: 15px;
-        padding: 50px 0;
+        padding: 30px 0; /* Réduit pour mobile */
         text-align: center;
-        font-family: sans-serif;
         font-weight: 800;
-        font-size: 80px;
-        box-shadow: 0 4px 12px rgba(255, 43, 74, 0.3);
-        margin-bottom: 20px;
-    }
-    .streamlit-expanderHeader {
-        background-color: #f0f2f6 !important;
-        border-radius: 8px !important;
-        border: 1px solid #e0e0e0 !important;
-        color: #444 !important; /* Force texte sombre */
-        font-weight: 600 !important;
-        font-size: 16px !important;
-        padding: 15px !important;
-        margin-bottom: 5px !important;
-    }
-    .streamlit-expanderContent {
-        border: 1px solid #f0f2f6;
-        border-top: none;
-        border-radius: 0 0 8px 8px;
-        padding: 10px;
-        margin-top: -5px;
+        font-size: 50px; /* Réduit pour mobile */
         margin-bottom: 10px;
     }
-    .stButton button[kind="primary"] { border-color: #8B0000 !important; color: #8B0000 !important; }
-    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
     
-    /* FIX COULEUR NOIRE SUR FOND BLANC POUR DARK MODE */
-    .recap-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9; margin-bottom: 15px; color: #333 !important; }
-    .ticket-card { border: 2px dashed #ccc; padding: 20px; background-color: #fff; border-radius: 10px; text-align: center; color: #333 !important; }
+    /* Accordéons (Gris clair) */
+    .streamlit-expanderHeader {
+        background-color: #f0f2f6 !important;
+        color: #000000 !important;
+    }
+    .streamlit-expanderHeader p {
+        color: #000000 !important;
+    }
+    .streamlit-expanderContent {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border: 1px solid #f0f2f6;
+    }
+
+    /* Cartes (Ticket, Recap, Planning) */
+    .recap-box, .ticket-card, .cours-card {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 10px;
+    }
+    /* Force tout le texte interne en noir */
+    .recap-box *, .ticket-card *, .cours-card * {
+        color: #000000 !important;
+    }
+    
+    /* Indicateurs couleur */
     .confirmed-resa { border-left: 5px solid #28a745; padding-left: 10px; }
     .pending-resa { border-left: 5px solid #ffc107; padding-left: 10px; }
-    .cours-card { background-color: white; border-left: 5px solid #ff2b4a; padding: 10px; margin-bottom: 10px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #333 !important; }
+    .cours-card { border-left: 5px solid #ff2b4a; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+    /* 3. OPTIMISATION MOBILE */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        padding-bottom: 3rem !important;
+    }
 </style>
 """
+    
+    # CSS SPÉCIFIQUE GROS BOUTONS (ACCUEIL)
     if page_type == "accueil":
         custom_css = """
 <style>
     div.stButton > button {
         width: 100%;
-        height: 120px !important;
-        font-size: 40px !important;
+        height: auto !important; /* Laisse la hauteur s'adapter sur mobile */
+        min-height: 100px;
+        font-size: 24px !important; /* Un peu plus petit pour tenir sur mobile */
         font-weight: 800 !important;
-        border-radius: 20px !important;
-        border: 2px solid #eee;
-        background-color: white;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        transition: 0.1s;
-        color: #333 !important; /* FORCE TEXTE NOIR */
+        border-radius: 15px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    div.stButton > button:hover {
-        border-color: #ff2b4a;
-        color: #ff2b4a !important;
-        transform: scale(1.02);
+    /* Exceptions petits boutons */
+    div[data-testid="stHorizontalBlock"] button, 
+    div[data-testid="stVerticalBlock"] button,
+    div.stButton button[kind="primary"] { 
+        min-height: 0px !important;
+        height: auto !important;
+        font-size: 16px !important; 
+        box-shadow: none;
     }
-    div[data-testid="stHorizontalBlock"] button { height: 50px !important; font-size: 16px !important; }
-    div[data-testid="stVerticalBlock"] button { height: auto !important; font-size: 16px !important; }
-    [data-testid="stSidebar"] { background-color: #f8f9fa; }
 </style>
 """
     else:
+        # CSS STANDARD (DETAIL)
         custom_css = """
 <style>
     div.stButton > button {
-        border-radius: 8px;
-        border: 1px solid #ddd;
-        font-weight: bold;
-        height: 50px !important;
-        width: 100%;
-        background-color: white;
-        transition: 0.1s;
+        height: auto !important;
+        min-height: 50px;
         font-size: 16px !important;
-        color: #333 !important; /* FORCE TEXTE NOIR */
-    }
-    div.stButton > button:hover {
-        border-color: #ff2b4a;
-        color: #ff2b4a !important;
+        font-weight: bold;
     }
 </style>
 """
@@ -234,7 +261,7 @@ def get_mon_planning(raw_urls):
     all_events.sort(key=lambda x: x['debut'])
     return all_events
 
-# --- FONCTIONS METIERS ---
+# --- METIERS ---
 def toggle_equipment(salle, icon):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -636,7 +663,6 @@ def main():
         inject_custom_css("detail")
         vue_login()
     else:
-        # NAVIGATION SIDEBAR V40
         with st.sidebar:
             st.title("🎓 UPEC Companion")
             st.write(f"Bonjour **{st.session_state.username}**")
