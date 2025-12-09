@@ -19,30 +19,37 @@ CHECKIN_TIME_MIN = 15
 
 st.set_page_config(page_title="Radar UPEC", page_icon="🏢", layout="wide")
 
-# --- INITIALISATION DB (PRIORITÉ ABSOLUE) ---
+# --- INITIALISATION DB (AVEC SÉCURITÉ ANTI-LOCK) ---
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, password TEXT, nom TEXT, ade_url TEXT DEFAULT "")''')
-    c.execute('''CREATE TABLE IF NOT EXISTS reservations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        user_email TEXT, 
-        salle TEXT, 
-        date_str TEXT, 
-        start_time TEXT, 
-        end_time TEXT, 
-        participants TEXT DEFAULT "", 
-        confirmed_list TEXT DEFAULT ""
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS admin_locks (salle TEXT PRIMARY KEY, reason TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS restrictions (salle TEXT, date_str TEXT, hour INTEGER, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS room_equipment (salle TEXT, icon TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS cache_ade (salle TEXT, debut TEXT, fin TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)''')
-    c.execute("INSERT OR IGNORE INTO metadata (key, value) VALUES ('force_groupe', '0')")
-    conn.commit()
-    conn.close()
+    # On tente de se connecter. Si locké, on attend un peu.
+    for i in range(5):
+        try:
+            conn = sqlite3.connect(DB_FILE, timeout=10) # Timeout plus long
+            c = conn.cursor()
+            c.execute('''CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, password TEXT, nom TEXT, ade_url TEXT DEFAULT "")''')
+            c.execute('''CREATE TABLE IF NOT EXISTS reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                user_email TEXT, 
+                salle TEXT, 
+                date_str TEXT, 
+                start_time TEXT, 
+                end_time TEXT, 
+                participants TEXT DEFAULT "", 
+                confirmed_list TEXT DEFAULT ""
+            )''')
+            c.execute('''CREATE TABLE IF NOT EXISTS admin_locks (salle TEXT PRIMARY KEY, reason TEXT)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS restrictions (salle TEXT, date_str TEXT, hour INTEGER, type TEXT)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS room_equipment (salle TEXT, icon TEXT)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS cache_ade (salle TEXT, debut TEXT, fin TEXT)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)''')
+            c.execute("INSERT OR IGNORE INTO metadata (key, value) VALUES ('force_groupe', '0')")
+            conn.commit()
+            conn.close()
+            break # Succès
+        except sqlite3.OperationalError:
+            time.sleep(1) # On attend 1s si bloqué
 
+# EXÉCUTION IMMÉDIATE
 init_db()
 
 # --- INITIALISATION SESSION ---
@@ -56,7 +63,7 @@ if 'page' not in st.session_state: st.session_state.page = "login"
 if 'etage_choisi' not in st.session_state: st.session_state.etage_choisi = None
 if 'expanded_grp' not in st.session_state: st.session_state.expanded_grp = None
 
-# --- CSS (V42 - CORRECTIF DARK MODE) ---
+# --- CSS (V42 - DARK MODE COMPATIBLE) ---
 def inject_custom_css(page_type="standard"):
     base_css = """
 <style>
@@ -79,7 +86,7 @@ def inject_custom_css(page_type="standard"):
         background-color: #f0f2f6 !important;
         border-radius: 8px !important;
         border: 1px solid #e0e0e0 !important;
-        color: #444 !important; /* Force texte sombre pour les titres accordéon */
+        color: #444 !important; /* Force texte sombre */
         font-weight: 600 !important;
         font-size: 16px !important;
         padding: 15px !important;
@@ -96,35 +103,12 @@ def inject_custom_css(page_type="standard"):
     .stButton button[kind="primary"] { border-color: #8B0000 !important; color: #8B0000 !important; }
     .block-container { padding-top: 1rem; padding-bottom: 5rem; }
     
-    /* FIX DARK MODE : On force la couleur noire pour le texte dans les boites blanches */
-    .recap-box { 
-        border: 1px solid #ddd; 
-        padding: 15px; 
-        border-radius: 8px; 
-        background-color: #f9f9f9; 
-        margin-bottom: 15px; 
-        color: #333 !important; /* NOIR FORCÉ */
-    }
-    .ticket-card { 
-        border: 2px dashed #ccc; 
-        padding: 20px; 
-        background-color: #fff; 
-        border-radius: 10px; 
-        text-align: center; 
-        color: #333 !important; /* NOIR FORCÉ */
-    }
-    .cours-card {
-        background-color: white;
-        border-left: 5px solid #ff2b4a;
-        padding: 10px;
-        margin-bottom: 10px;
-        border-radius: 5px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        color: #333 !important; /* NOIR FORCÉ */
-    }
-    
+    /* FIX COULEUR NOIRE SUR FOND BLANC POUR DARK MODE */
+    .recap-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; background-color: #f9f9f9; margin-bottom: 15px; color: #333 !important; }
+    .ticket-card { border: 2px dashed #ccc; padding: 20px; background-color: #fff; border-radius: 10px; text-align: center; color: #333 !important; }
     .confirmed-resa { border-left: 5px solid #28a745; padding-left: 10px; }
     .pending-resa { border-left: 5px solid #ffc107; padding-left: 10px; }
+    .cours-card { background-color: white; border-left: 5px solid #ff2b4a; padding: 10px; margin-bottom: 10px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #333 !important; }
 </style>
 """
     if page_type == "accueil":
@@ -140,7 +124,7 @@ def inject_custom_css(page_type="standard"):
         background-color: white;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         transition: 0.1s;
-        color: #333 !important; /* Texte bouton noir */
+        color: #333 !important; /* FORCE TEXTE NOIR */
     }
     div.stButton > button:hover {
         border-color: #ff2b4a;
@@ -149,7 +133,6 @@ def inject_custom_css(page_type="standard"):
     }
     div[data-testid="stHorizontalBlock"] button { height: 50px !important; font-size: 16px !important; }
     div[data-testid="stVerticalBlock"] button { height: auto !important; font-size: 16px !important; }
-    
     [data-testid="stSidebar"] { background-color: #f8f9fa; }
 </style>
 """
@@ -165,7 +148,7 @@ def inject_custom_css(page_type="standard"):
         background-color: white;
         transition: 0.1s;
         font-size: 16px !important;
-        color: #333 !important; /* Texte bouton noir */
+        color: #333 !important; /* FORCE TEXTE NOIR */
     }
     div.stButton > button:hover {
         border-color: #ff2b4a;
@@ -214,7 +197,7 @@ def save_ade_url(email, url):
     conn.commit()
     conn.close()
 
-# --- PARSING MULTI-LIENS ---
+# --- PARSING ---
 def fetch_and_parse_ical(url):
     events = []
     try:
